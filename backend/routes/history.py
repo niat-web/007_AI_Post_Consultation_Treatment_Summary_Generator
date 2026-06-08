@@ -33,6 +33,7 @@ def get_history():
 def get_history_detail(consultation_id):
     consultation = Consultation.query.get_or_404(consultation_id)
     latest_summary = consultation.summaries[-1] if consultation.summaries else None
+    latest_feedback = latest_summary.feedback[-1] if latest_summary and latest_summary.feedback else None
 
     return jsonify(
         {
@@ -58,6 +59,7 @@ def get_history_detail(consultation_id):
             "summary_id": latest_summary.id if latest_summary else None,
             "summary": latest_summary.full_summary if latest_summary else None,
             "doctors_note": latest_summary.doctors_note if latest_summary else "",
+            "rating": latest_feedback.rating if latest_feedback else None,
             "sections": {
                 "section1": latest_summary.section1 if latest_summary else "",
                 "section2": latest_summary.section2 if latest_summary else "",
@@ -119,6 +121,7 @@ def update_consultation_history(consultation_id):
 
     # Retrieve updated summary information
     latest_summary = consultation.summaries[-1] if consultation.summaries else None
+    latest_feedback = latest_summary.feedback[-1] if latest_summary and latest_summary.feedback else None
 
     return jsonify({
         "message": "Consultation history updated successfully",
@@ -135,6 +138,7 @@ def update_consultation_history(consultation_id):
         "summary_id": latest_summary.id if latest_summary else None,
         "summary": latest_summary.full_summary if latest_summary else None,
         "doctors_note": latest_summary.doctors_note if latest_summary else "",
+        "rating": latest_feedback.rating if latest_feedback else None,
         "sections": {
             "section1": latest_summary.section1 if latest_summary else "",
             "section2": latest_summary.section2 if latest_summary else "",

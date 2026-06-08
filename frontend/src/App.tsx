@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import './App.css'
+import { jsPDF } from 'jspdf'
+import html2canvas from 'html2canvas'
 
 type Medication = {
   name: string
@@ -136,6 +138,53 @@ function App() {
   // Analytics states
   const [analyticsData, setAnalyticsData] = useState<any>(null)
   const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
+  const [isSharingPdf, setIsSharingPdf] = useState(false)
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null)
+
+  const handleSort = (key: string) => {
+    let direction: 'asc' | 'desc' = 'asc'
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc'
+    }
+    setSortConfig({ key, direction })
+  }
+
+  const sortedRecords = useMemo(() => {
+    if (!analyticsData || !analyticsData.records) return []
+    const sortableItems = [...analyticsData.records]
+    if (sortConfig !== null) {
+      sortableItems.sort((a, b) => {
+        let aVal = a[sortConfig.key]
+        let bVal = b[sortConfig.key]
+
+        if (sortConfig.key === 'created_at') {
+          aVal = new Date(aVal).getTime()
+          bVal = new Date(bVal).getTime()
+        }
+
+        if (aVal === null || aVal === undefined) return sortConfig.direction === 'asc' ? 1 : -1
+        if (bVal === null || bVal === undefined) return sortConfig.direction === 'asc' ? -1 : 1
+
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+          return sortConfig.direction === 'asc'
+            ? aVal.localeCompare(bVal)
+            : bVal.localeCompare(aVal)
+        }
+
+        return sortConfig.direction === 'asc'
+          ? (aVal > bVal ? 1 : -1)
+          : (aVal < bVal ? 1 : -1)
+      })
+    }
+    return sortableItems
+  }, [analyticsData?.records, sortConfig])
+
+  function renderSortArrow(key: string) {
+    if (!sortConfig || sortConfig.key !== key) {
+      return <span className="sort-arrow-inactive">↕</span>
+    }
+    return sortConfig.direction === 'asc' ? <span className="sort-arrow-active">▲</span> : <span className="sort-arrow-active">▼</span>
+  }
 
   const completedFields = useMemo(() => {
     const fields = [
@@ -283,7 +332,7 @@ function App() {
         section4: ''
       })
       setDoctorsNote(response.doctors_note || '')
-      setFeedbackRating(null)
+      setFeedbackRating(response.rating || null)
       setNotice('Loaded consultation details from history')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load history details')
@@ -358,6 +407,7 @@ function App() {
       })
       setEditableSections(response.sections)
       setDoctorsNote(response.doctors_note || '')
+      setFeedbackRating(response.rating || null)
       setNotice('Consultation changes saved successfully')
       const historyData = await apiRequest<HistoryItem[]>('/api/history')
       setHistory(historyData)
@@ -393,28 +443,100 @@ function App() {
     window.print()
   }
 
-  function handleWhatsAppShare() {
+  async function handleWhatsAppShare() {
     if (!summary || !editableSections) return
+    setIsSharingPdf(true)
+    setError('')
+    setNotice('')
 
-    const header = `*AYURDHA CLINICS*\n*Patient Treatment Summary*\n\n`
-    const pInfo = `*Patient:* ${form.patient_name} (${form.age} yrs)\n*Department:* ${form.speciality}\n*Date:* ${new Date().toLocaleDateString()}\n\n`
-    const divider = `--------------------------------------\n`
-    
-    const s1 = `*What you came in for (సందర్శన కారణం):*\n${editableSections.section1}\n\n`
-    const s2 = `*What was found (వ్యాధి నిర్ధారణ):*\n${editableSections.section2}\n\n`
-    const s3 = `*What to take / do (మందులు / సూచనలు):*\n${editableSections.section3}\n\n`
-    const s4 = `*When to return (తదుపరి సూచనలు):*\n${editableSections.section4}\n\n`
-    
-    let noteText = ''
-    if (doctorsNote) {
-      noteText = `*Doctor's Note:*\n${doctorsNote}\n\n`
+    try {
+      const element = document.getElementById('patient-print-summary')
+      if (!element) {
+        throw new Error('Print summary element not found')
+      }
+
+      // Temporarily display the print container offscreen to capture it
+      const originalDisplay = element.style.display
+      const originalPosition = element.style.position
+      const originalLeft = element.style.left
+      const originalTop = element.style.top
+      const originalWidth = element.style.width
+      const originalBackground = element.style.background
+
+      element.style.display = 'block'
+      element.style.position = 'absolute'
+      element.style.left = '-9999px'
+      element.style.top = '0'
+      element.style.width = '800px'
+      element.style.background = '#ffffff'
+
+      const canvas = await html2canvas(element, {
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      })
+
+      // Restore original styling
+      element.style.display = originalDisplay
+      element.style.position = originalPosition
+      element.style.left = originalLeft
+      element.style.top = originalTop
+      element.style.width = originalWidth
+      element.style.background = originalBackground
+
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      const imgWidth = 210
+      const pageHeight = 295
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+      let heightLeft = imgHeight
+      let position = 0
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+
+      const pdfBlob = pdf.output('blob')
+      const fileName = `${form.patient_name.replace(/\s+/g, '_')}_treatment_summary.pdf`
+      const pdfFile = new File([pdfBlob], fileName, {
+        type: 'application/pdf',
+      })
+
+      // Try Web Share API (mobile/supported browsers)
+      if (navigator.canShare && navigator.canShare({ files: [pdfFile] })) {
+        await navigator.share({
+          files: [pdfFile],
+          title: 'Patient Treatment Summary',
+          text: `Patient Treatment Summary for ${form.patient_name}`,
+        })
+        setNotice('PDF shared successfully via WhatsApp/Share!')
+      } else {
+        // Fallback for desktop: download and direct link
+        const link = document.createElement('a')
+        link.href = URL.createObjectURL(pdfBlob)
+        link.download = fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        // Formulate WhatsApp Web link
+        const message = `Here is the PDF Treatment Summary for ${form.patient_name}. The PDF has been downloaded to your device; please attach it here.`
+        const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+        window.open(url, '_blank')
+        setNotice('PDF generated and downloaded! Please attach it to your WhatsApp message.')
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not generate PDF')
+    } finally {
+      setIsSharingPdf(false)
     }
-    
-    const footer = `Get well soon!\n_Powered by Ayurdha Clinics AI_`
-    
-    const message = `${header}${pInfo}${divider}${s1}${s2}${s3}${s4}${noteText}${divider}${footer}`
-    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
-    window.open(url, '_blank')
   }
 
   function renderStars(rating: number, interactive = false, onSelect?: (r: number) => void) {
@@ -781,8 +903,8 @@ function App() {
                     <button type="button" className="print-btn-action" onClick={handlePrint}>
                       🖨️ Print Summary
                     </button>
-                    <button type="button" className="whatsapp-btn-action" onClick={handleWhatsAppShare}>
-                      💬 WhatsApp Share
+                    <button type="button" className="whatsapp-btn-action" onClick={handleWhatsAppShare} disabled={isSharingPdf}>
+                      {isSharingPdf ? '⏳ Sharing PDF...' : '💬 WhatsApp Share'}
                     </button>
                   </div>
 
@@ -952,6 +1074,78 @@ function App() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+
+              {/* Consultation Registry Table */}
+              <div className="dashboard-records-section">
+                <div className="section-header">
+                  <h3>All Consultations Registry</h3>
+                  <p className="chart-subtitle">
+                    Double-click any record to open and edit it in the Consultation Workspace. Click column headers to sort.
+                  </p>
+                </div>
+                <div className="table-responsive records-table-wrapper">
+                  <table className="records-table">
+                    <thead>
+                      <tr>
+                        <th onClick={() => handleSort('id')} style={{ cursor: 'pointer' }}>
+                          ID {renderSortArrow('id')}
+                        </th>
+                        <th onClick={() => handleSort('patient_name')} style={{ cursor: 'pointer' }}>
+                          Name {renderSortArrow('patient_name')}
+                        </th>
+                        <th onClick={() => handleSort('speciality')} style={{ cursor: 'pointer' }}>
+                          Department {renderSortArrow('speciality')}
+                        </th>
+                        <th onClick={() => handleSort('age')} style={{ cursor: 'pointer' }}>
+                          Age {renderSortArrow('age')}
+                        </th>
+                        <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>
+                          Date {renderSortArrow('created_at')}
+                        </th>
+                        <th onClick={() => handleSort('rating')} style={{ cursor: 'pointer' }}>
+                          Rating {renderSortArrow('rating')}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedRecords.length > 0 ? (
+                        sortedRecords.map((record: any) => (
+                          <tr
+                            key={record.id}
+                            className="record-row-interactive"
+                            onDoubleClick={() => {
+                              setActiveTab('consultation')
+                              void loadConsultationDetail(record.id)
+                            }}
+                            title="Double-click to open in Consultation Workspace"
+                          >
+                            <td><strong>#{record.id}</strong></td>
+                            <td>{record.patient_name}</td>
+                            <td>
+                              <span className="dept-badge">{record.speciality}</span>
+                            </td>
+                            <td>{record.age} yrs</td>
+                            <td>{new Date(record.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                            <td>
+                              {record.rating ? (
+                                <div className="table-rating-stars">
+                                  {renderStars(record.rating)}
+                                </div>
+                              ) : (
+                                <span className="no-rating-label">Not Rated</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={6} className="empty-table-cell">No consultations found.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>

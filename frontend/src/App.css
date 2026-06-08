@@ -971,6 +971,108 @@ button {
   }
 }
 
+/* Admin Records Registry Table styling */
+.dashboard-records-section {
+  margin-top: 40px;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-records-section .section-header {
+  margin-bottom: 20px;
+}
+
+.dashboard-records-section h3 {
+  font-size: 18px;
+  font-weight: 750;
+  color: var(--heading);
+  margin: 0 0 4px 0;
+}
+
+.records-table-wrapper {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.records-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 13.5px;
+}
+
+.records-table th,
+.records-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.records-table th {
+  font-weight: 700;
+  color: var(--heading);
+  background-color: #f8fafc;
+  user-select: none;
+  transition: background-color 0.2s ease;
+}
+
+.records-table th:hover {
+  background-color: #f1f5f9;
+}
+
+.record-row-interactive {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.record-row-interactive:hover {
+  background-color: #f8fafc;
+}
+
+.record-row-interactive:active {
+  background-color: var(--primary-subtle);
+}
+
+.dept-badge {
+  display: inline-block;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 6px;
+  background-color: var(--primary-subtle);
+  color: var(--primary);
+}
+
+.sort-arrow-inactive {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--muted);
+  opacity: 0.5;
+}
+
+.sort-arrow-active {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--primary);
+  font-weight: bold;
+}
+
+.table-rating-stars {
+  display: flex;
+  gap: 2px;
+  color: var(--warning);
+}
+
+.no-rating-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
 /* ==========================================================================
    PRINTER FRIENDLY CSS LAYOUT
    ========================================================================== */

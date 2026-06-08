@@ -28,6 +28,20 @@ def get_admin_analytics():
         .all()
     )
 
+    consultations = Consultation.query.order_by(Consultation.created_at.desc()).all()
+    records = []
+    for c in consultations:
+        latest_summary = c.summaries[-1] if c.summaries else None
+        latest_feedback = latest_summary.feedback[-1] if latest_summary and latest_summary.feedback else None
+        records.append({
+            "id": c.id,
+            "patient_name": c.patient_name,
+            "speciality": c.speciality or "General Medicine",
+            "age": c.age,
+            "created_at": c.created_at.isoformat(),
+            "rating": latest_feedback.rating if latest_feedback else None
+        })
+
     return {
         "total_generations": total_generations,
         "average_rating": round(float(average_rating), 2) if average_rating else 0,
@@ -45,5 +59,6 @@ def get_admin_analytics():
                 "count": row.count
             }
             for row in speciality_counts
-        ]
+        ],
+        "records": records
     }
