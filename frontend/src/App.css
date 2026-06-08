@@ -1,0 +1,379 @@
+.app-shell {
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.topbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  max-width: 1440px;
+  margin: 0 auto 24px;
+}
+
+.topbar h1 {
+  max-width: 760px;
+}
+
+.eyebrow {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+}
+
+.api-status {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.api-status span {
+  margin-top: 7px;
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.api-status strong,
+.api-status code {
+  display: block;
+}
+
+.api-status strong {
+  color: var(--heading);
+  font-size: 13px;
+  line-height: 1.2;
+  margin-bottom: 2px;
+}
+
+.api-status.connected span {
+  background: var(--success);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--success) 15%, transparent);
+}
+
+.api-status.disconnected span {
+  background: var(--danger);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--danger) 15%, transparent);
+}
+
+.api-status.checking span {
+  background: var(--warning);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 18%, transparent);
+}
+
+.api-status code {
+  overflow: hidden;
+  max-width: 280px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(360px, 0.9fr);
+  gap: 24px;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+.summary-form,
+.summary-panel,
+.history-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.summary-form {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 24px;
+}
+
+.side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.summary-panel,
+.history-panel {
+  padding: 22px;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 6px;
+}
+
+.panel-heading h2,
+.medication-header h3,
+.summary-sections h3 {
+  margin: 0;
+}
+
+.progress-pill {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--tint);
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--heading);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+input,
+textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input);
+  color: var(--heading);
+  font: inherit;
+  font-size: 15px;
+  outline: none;
+  padding: 11px 12px;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+.medication-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.medication-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.medication-row {
+  display: grid;
+  grid-template-columns: 1.1fr 0.8fr 0.9fr 0.9fr 38px;
+  gap: 10px;
+  align-items: center;
+}
+
+button {
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background-color 0.2s ease;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+
+.primary-button {
+  min-height: 48px;
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.primary-button:hover:not(:disabled),
+.ghost-button:hover,
+.template-strip button:hover,
+.feedback-row button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--button-shadow);
+}
+
+.ghost-button,
+.template-strip button,
+.feedback-row button {
+  border: 1px solid var(--border);
+  background: var(--input);
+  color: var(--heading);
+  padding: 9px 12px;
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 20px;
+}
+
+.template-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.summary-sections {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.summary-sections article,
+.history-list article,
+.empty-state,
+.message {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--input);
+}
+
+.summary-sections article {
+  padding: 14px;
+}
+
+.summary-sections h3 {
+  color: var(--heading);
+  font-size: 15px;
+  margin-bottom: 6px;
+}
+
+.summary-sections p,
+.history-list p {
+  color: var(--text);
+}
+
+.feedback-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.message {
+  margin-top: 16px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.message.error {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.message.success {
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border));
+  background: var(--success-bg);
+  color: var(--success-strong);
+}
+
+.empty-state {
+  margin-top: 18px;
+  padding: 22px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.history-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.history-list article {
+  display: grid;
+  gap: 5px;
+  padding: 13px;
+}
+
+.history-list strong {
+  color: var(--heading);
+}
+
+.history-list span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 1100px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 20px;
+  }
+
+  .topbar,
+  .panel-heading,
+  .medication-header,
+  .feedback-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .field-grid,
+  .medication-row {
+    grid-template-columns: 1fr;
+  }
+
+  .icon-button {
+    width: 100%;
+  }
+}

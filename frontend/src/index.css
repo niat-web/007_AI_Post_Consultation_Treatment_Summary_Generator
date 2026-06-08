@@ -1,0 +1,75 @@
+:root {
+  --accent: #156c68;
+  --accent-strong: #0f514e;
+  --bg: #f3f6f4;
+  --border: #d9e1dd;
+  --button-shadow: 0 10px 22px rgba(15, 81, 78, 0.14);
+  --danger: #b42318;
+  --danger-bg: #fff0ee;
+  --focus-ring: rgba(21, 108, 104, 0.18);
+  --heading: #17211f;
+  --input: #fbfdfc;
+  --muted: #65736f;
+  --shadow: 0 16px 40px rgba(23, 33, 31, 0.06);
+  --success: #17803d;
+  --success-bg: #effaf2;
+  --success-strong: #146c35;
+  --surface: #ffffff;
+  --text: #4c5b57;
+  --tint: #e7f4f2;
+  --warning: #b7791f;
+
+  color: var(--text);
+  background: var(--bg);
+  font: 16px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    'Segoe UI', sans-serif;
+  font-synthesis: none;
+  letter-spacing: 0;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  margin: 0;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--heading);
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: 1.02;
+}
+
+h2 {
+  font-size: 22px;
+  line-height: 1.15;
+}
+
+h3 {
+  font-size: 16px;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', monospace;
+  font-size: 13px;
+}
