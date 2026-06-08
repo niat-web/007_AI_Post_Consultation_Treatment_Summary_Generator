@@ -24,6 +24,9 @@ def generate_summary():
         diagnosis=data["diagnosis"],
         treatment=data["treatment"],
         followup=data.get("followup"),
+        speciality=data.get("speciality", "General Medicine"),
+        language=data.get("language", "English"),
+        understanding_level=data.get("understanding_level", "Simple"),
     )
 
     for item in data.get("medications", []):
@@ -43,6 +46,7 @@ def generate_summary():
         section2=summary_data["section2"],
         section3=summary_data["section3"],
         section4=summary_data["section4"],
+        doctors_note=data.get("doctors_note", ""),
         full_summary=summary_data["full_summary"],
     )
     consultation.summaries.append(summary)
@@ -55,6 +59,7 @@ def generate_summary():
             "consultation_id": consultation.id,
             "summary_id": summary.id,
             "summary": summary.full_summary,
+            "doctors_note": summary.doctors_note,
             "sections": {
                 "section1": summary.section1,
                 "section2": summary.section2,

@@ -13,6 +13,9 @@ class Consultation(db.Model):
     diagnosis = db.Column(db.Text, nullable=False)
     treatment = db.Column(db.Text, nullable=False)
     followup = db.Column(db.Text)
+    speciality = db.Column(db.String(100), default="General Medicine")
+    language = db.Column(db.String(20), default="English")
+    understanding_level = db.Column(db.String(50), default="Simple")
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     medications = db.relationship(
@@ -58,6 +61,7 @@ class Summary(db.Model):
     section2 = db.Column(db.Text)
     section3 = db.Column(db.Text)
     section4 = db.Column(db.Text)
+    doctors_note = db.Column(db.Text)
     full_summary = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 

@@ -1,12 +1,13 @@
 from sqlalchemy import cast, Date, func
 
 from database.db import db
-from database.models import Feedback, Summary
+from database.models import Feedback, Summary, Consultation
 
 
 def get_admin_analytics():
     total_generations = db.session.query(func.count(Summary.id)).scalar() or 0
     average_rating = db.session.query(func.avg(Feedback.rating)).scalar()
+    
     ratings_per_day = (
         db.session.query(
             cast(Feedback.created_at, Date).label("date"),
@@ -15,6 +16,15 @@ def get_admin_analytics():
         )
         .group_by(cast(Feedback.created_at, Date))
         .order_by(cast(Feedback.created_at, Date))
+        .all()
+    )
+
+    speciality_counts = (
+        db.session.query(
+            Consultation.speciality,
+            func.count(Consultation.id).label("count")
+        )
+        .group_by(Consultation.speciality)
         .all()
     )
 
@@ -29,4 +39,11 @@ def get_admin_analytics():
             }
             for row in ratings_per_day
         ],
+        "speciality_distribution": [
+            {
+                "speciality": row.speciality or "General Medicine",
+                "count": row.count
+            }
+            for row in speciality_counts
+        ]
     }

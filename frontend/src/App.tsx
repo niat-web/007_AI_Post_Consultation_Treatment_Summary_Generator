@@ -21,6 +21,7 @@ type GenerateResponse = {
   summary_id: number
   summary: string
   sections: SummarySections
+  doctors_note?: string
 }
 
 type HistoryItem = {
@@ -29,6 +30,9 @@ type HistoryItem = {
   age: number
   complaint: string
   diagnosis: string
+  speciality?: string
+  language?: string
+  understanding_level?: string
   created_at: string
 }
 
@@ -49,6 +53,9 @@ type FormState = {
   treatment: string
   followup: string
   medications: Medication[]
+  speciality: string
+  language: string
+  understanding_level: string
 }
 
 type BackendStatus = 'checking' | 'connected' | 'disconnected'
@@ -73,13 +80,16 @@ const initialForm: FormState = {
   treatment: '',
   followup: '',
   medications: [{ ...emptyMedication }],
+  speciality: 'General Medicine',
+  language: 'English',
+  understanding_level: 'Simple',
 }
 
 const sectionLabels: Record<keyof SummarySections, string> = {
-  section1: 'What happened',
-  section2: 'Medicines',
-  section3: 'Home care',
-  section4: 'When to return',
+  section1: '1. What you came in for (సందర్శన కారణం)',
+  section2: '2. What was found (పరీక్షా ఫలితాలు)',
+  section3: '3. What to take / do (చేయవలసినవి / మందులు)',
+  section4: '4. When to return (తదుపరి సూచనలు)',
 }
 
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
@@ -105,16 +115,27 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 function App() {
+  const [activeTab, setActiveTab] = useState<'consultation' | 'analytics'>('consultation')
   const [form, setForm] = useState<FormState>(initialForm)
   const [summary, setSummary] = useState<GenerateResponse | null>(null)
+  const [editableSections, setEditableSections] = useState<SummarySections | null>(null)
+  const [doctorsNote, setDoctorsNote] = useState<string>('')
+  
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [isLoadingHistory, setIsLoadingHistory] = useState(false)
-  const [backendStatus, setBackendStatus] =
-    useState<BackendStatus>('checking')
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('checking')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+
+  // Feedback and Ratings states
+  const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
+  const [hoverRating, setHoverRating] = useState<number | null>(null)
+
+  // Analytics states
+  const [analyticsData, setAnalyticsData] = useState<any>(null)
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(false)
 
   const completedFields = useMemo(() => {
     const fields = [
@@ -138,6 +159,12 @@ function App() {
     return () => window.clearInterval(intervalId)
   }, [])
 
+  useEffect(() => {
+    if (activeTab === 'analytics') {
+      void loadAnalytics()
+    }
+  }, [activeTab])
+
   async function checkBackendHealth() {
     try {
       const data = await apiRequest<{ status: string }>('/api/health')
@@ -160,6 +187,18 @@ function App() {
       setError(err instanceof Error ? err.message : 'Could not load API data')
     } finally {
       setIsLoadingHistory(false)
+    }
+  }
+
+  async function loadAnalytics() {
+    setIsLoadingAnalytics(true)
+    try {
+      const data = await apiRequest<any>('/api/admin/analytics')
+      setAnalyticsData(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load analytics')
+    } finally {
+      setIsLoadingAnalytics(false)
     }
   }
 
@@ -208,11 +247,57 @@ function App() {
     setNotice(`${template.title} template applied`)
   }
 
+  async function loadConsultationDetail(id: number) {
+    setError('')
+    setNotice('')
+    setIsGenerating(true)
+    try {
+      const response = await apiRequest<any>(`/api/history/${id}`)
+      setForm({
+        patient_name: response.patient_name,
+        age: String(response.age),
+        complaint: response.complaint,
+        diagnosis: response.diagnosis,
+        treatment: response.treatment,
+        followup: response.followup || '',
+        medications: response.medications.length > 0 ? response.medications : [{ ...emptyMedication }],
+        speciality: response.speciality || 'General Medicine',
+        language: response.language || 'English',
+        understanding_level: response.understanding_level || 'Simple',
+      })
+      setSummary({
+        consultation_id: response.id,
+        summary_id: response.summary_id,
+        summary: response.summary || '',
+        sections: response.sections || {
+          section1: response.summary || '',
+          section2: '',
+          section3: '',
+          section4: ''
+        }
+      })
+      setEditableSections(response.sections || {
+        section1: response.summary || '',
+        section2: '',
+        section3: '',
+        section4: ''
+      })
+      setDoctorsNote(response.doctors_note || '')
+      setFeedbackRating(null)
+      setNotice('Loaded consultation details from history')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not load history details')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError('')
     setNotice('')
     setIsGenerating(true)
+    setFeedbackRating(null)
 
     const medications = form.medications.filter((item) =>
       Object.values(item).some(Boolean),
@@ -228,11 +313,56 @@ function App() {
         }),
       })
       setSummary(data)
-      setNotice('Patient summary generated')
+      setEditableSections(data.sections)
+      setDoctorsNote(data.doctors_note || '')
+      setNotice('Patient summary generated successfully')
       const historyData = await apiRequest<HistoryItem[]>('/api/history')
       setHistory(historyData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not generate summary')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  async function handleSaveChanges() {
+    if (!summary) return
+    setError('')
+    setNotice('')
+    setIsGenerating(true)
+
+    try {
+      const response = await apiRequest<any>(`/api/history/${summary.consultation_id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          patient_name: form.patient_name,
+          age: Number(form.age),
+          complaint: form.complaint,
+          diagnosis: form.diagnosis,
+          treatment: form.treatment,
+          followup: form.followup,
+          speciality: form.speciality,
+          language: form.language,
+          understanding_level: form.understanding_level,
+          sections: editableSections,
+          doctors_note: doctorsNote,
+          summary: `${editableSections?.section1 || ''}\n\n${editableSections?.section2 || ''}\n\n${editableSections?.section3 || ''}\n\n${editableSections?.section4 || ''}`
+        })
+      })
+
+      setSummary({
+        consultation_id: response.id,
+        summary_id: response.summary_id,
+        summary: response.summary,
+        sections: response.sections
+      })
+      setEditableSections(response.sections)
+      setDoctorsNote(response.doctors_note || '')
+      setNotice('Consultation changes saved successfully')
+      const historyData = await apiRequest<HistoryItem[]>('/api/history')
+      setHistory(historyData)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save modifications')
     } finally {
       setIsGenerating(false)
     }
@@ -249,19 +379,107 @@ function App() {
         method: 'POST',
         body: JSON.stringify({ summary_id: summary.summary_id, rating }),
       })
-      setNotice('Feedback saved')
+      setFeedbackRating(rating)
+      setNotice('Feedback rating saved. Thank you!')
+      if (activeTab === 'analytics') {
+        void loadAnalytics()
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save feedback')
     }
   }
 
+  function handlePrint() {
+    window.print()
+  }
+
+  function handleWhatsAppShare() {
+    if (!summary || !editableSections) return
+
+    const header = `*AYURDHA CLINICS*\n*Patient Treatment Summary*\n\n`
+    const pInfo = `*Patient:* ${form.patient_name} (${form.age} yrs)\n*Department:* ${form.speciality}\n*Date:* ${new Date().toLocaleDateString()}\n\n`
+    const divider = `--------------------------------------\n`
+    
+    const s1 = `*What you came in for (సందర్శన కారణం):*\n${editableSections.section1}\n\n`
+    const s2 = `*What was found (వ్యాధి నిర్ధారణ):*\n${editableSections.section2}\n\n`
+    const s3 = `*What to take / do (మందులు / సూచనలు):*\n${editableSections.section3}\n\n`
+    const s4 = `*When to return (తదుపరి సూచనలు):*\n${editableSections.section4}\n\n`
+    
+    let noteText = ''
+    if (doctorsNote) {
+      noteText = `*Doctor's Note:*\n${doctorsNote}\n\n`
+    }
+    
+    const footer = `Get well soon!\n_Powered by Ayurdha Clinics AI_`
+    
+    const message = `${header}${pInfo}${divider}${s1}${s2}${s3}${s4}${noteText}${divider}${footer}`
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(message)}`
+    window.open(url, '_blank')
+  }
+
+  function renderStars(rating: number, interactive = false, onSelect?: (r: number) => void) {
+    return (
+      <div className="star-rating">
+        {[1, 2, 3, 4, 5].map((star) => {
+          const active = interactive 
+            ? (hoverRating !== null ? star <= hoverRating : star <= (feedbackRating || 0))
+            : star <= rating;
+          return (
+            <button
+              type="button"
+              key={star}
+              className={`star-btn ${active ? 'active' : ''} ${interactive ? 'interactive' : ''}`}
+              onClick={() => interactive && onSelect && onSelect(star)}
+              onMouseEnter={() => interactive && setHoverRating(star)}
+              onMouseLeave={() => interactive && setHoverRating(null)}
+              aria-label={`Rate ${star} star${star > 1 ? 's' : ''}`}
+              disabled={!interactive}
+            >
+              ★
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  function handleResetForm() {
+    setForm(initialForm)
+    setSummary(null)
+    setEditableSections(null)
+    setDoctorsNote('')
+    setFeedbackRating(null)
+    setError('')
+    setNotice('')
+  }
+
   return (
     <main className="app-shell">
-      <header className="topbar">
+      {/* Dynamic Screen Layout */}
+      <header className="topbar no-print">
         <div>
-          <p className="eyebrow">AI Medical Summary</p>
-          <h1>Patient-friendly visit summaries</h1>
+          <p className="eyebrow">AI Post-Consultation System</p>
+          <h1>Ayurdha Clinics</h1>
         </div>
+
+        {/* Tab Selection */}
+        <nav className="tab-navigation">
+          <button 
+            type="button" 
+            className={`tab-btn ${activeTab === 'consultation' ? 'active' : ''}`}
+            onClick={() => setActiveTab('consultation')}
+          >
+            Consultation Workspace
+          </button>
+          <button 
+            type="button" 
+            className={`tab-btn ${activeTab === 'analytics' ? 'active' : ''}`}
+            onClick={() => setActiveTab('analytics')}
+          >
+            Admin Analytics
+          </button>
+        </nav>
+
         <div
           className={`api-status ${backendStatus}`}
           aria-label={`Backend status: ${backendStatus}`}
@@ -270,240 +488,581 @@ function App() {
           <div>
             <strong>
               {backendStatus === 'connected'
-                ? 'Backend connected'
+                ? 'System connected'
                 : backendStatus === 'disconnected'
-                  ? 'Backend disconnected'
-                  : 'Checking backend'}
+                  ? 'Connection lost'
+                  : 'Locating system'}
             </strong>
             <code>{API_URL}</code>
           </div>
         </div>
       </header>
 
-      <section className="workspace">
-        <form className="summary-form" onSubmit={handleSubmit}>
-          <div className="panel-heading">
-            <div>
-              <p className="eyebrow">Consultation</p>
-              <h2>Clinical notes</h2>
-            </div>
-            <div className="progress-pill">{completedFields}/5 ready</div>
-          </div>
+      {error && <div className="message error no-print">{error}</div>}
+      {notice && <div className="message success no-print">{notice}</div>}
 
-          <div className="field-grid">
-            <label>
-              Patient name
-              <input
-                required
-                value={form.patient_name}
-                onChange={(event) =>
-                  updateField('patient_name', event.target.value)
-                }
-                placeholder="Ananya Rao"
-              />
-            </label>
-            <label>
-              Age
-              <input
-                required
-                min="0"
-                type="number"
-                value={form.age}
-                onChange={(event) => updateField('age', event.target.value)}
-                placeholder="42"
-              />
-            </label>
-          </div>
-
-          <label>
-            Complaint
-            <textarea
-              required
-              value={form.complaint}
-              onChange={(event) => updateField('complaint', event.target.value)}
-              placeholder="Fever and body pains for 3 days"
-            />
-          </label>
-
-          <div className="field-grid">
-            <label>
-              Diagnosis
-              <textarea
-                required
-                value={form.diagnosis}
-                onChange={(event) =>
-                  updateField('diagnosis', event.target.value)
-                }
-                placeholder="Viral fever"
-              />
-            </label>
-            <label>
-              Treatment
-              <textarea
-                required
-                value={form.treatment}
-                onChange={(event) =>
-                  updateField('treatment', event.target.value)
-                }
-                placeholder="Hydration, paracetamol, rest"
-              />
-            </label>
-          </div>
-
-          <label>
-            Follow-up
-            <input
-              value={form.followup}
-              onChange={(event) => updateField('followup', event.target.value)}
-              placeholder="Review after 3 days if fever continues"
-            />
-          </label>
-
-          <div className="medication-header">
-            <h3>Medications</h3>
-            <button type="button" className="ghost-button" onClick={addMedication}>
-              Add medicine
-            </button>
-          </div>
-
-          <div className="medication-list">
-            {form.medications.map((item, index) => (
-              <div className="medication-row" key={index}>
-                <input
-                  value={item.name}
-                  onChange={(event) =>
-                    updateMedication(index, 'name', event.target.value)
-                  }
-                  placeholder="Medicine"
-                />
-                <input
-                  value={item.dose}
-                  onChange={(event) =>
-                    updateMedication(index, 'dose', event.target.value)
-                  }
-                  placeholder="Dose"
-                />
-                <input
-                  value={item.frequency}
-                  onChange={(event) =>
-                    updateMedication(index, 'frequency', event.target.value)
-                  }
-                  placeholder="Frequency"
-                />
-                <input
-                  value={item.duration}
-                  onChange={(event) =>
-                    updateMedication(index, 'duration', event.target.value)
-                  }
-                  placeholder="Duration"
-                />
-                <button
-                  type="button"
-                  className="icon-button"
-                  aria-label="Remove medication"
-                  onClick={() => removeMedication(index)}
-                >
-                  -
-                </button>
-              </div>
-            ))}
-          </div>
-
-          {templates.length > 0 && (
-            <div className="template-strip" aria-label="Templates">
-              {templates.map((template) => (
-                <button
-                  type="button"
-                  key={template.id}
-                  onClick={() => applyTemplate(template)}
-                >
-                  {template.title}
-                </button>
-              ))}
-            </div>
-          )}
-
-          <button className="primary-button" disabled={isGenerating}>
-            {isGenerating ? 'Generating...' : 'Generate summary'}
-          </button>
-        </form>
-
-        <aside className="side-column">
-          <section className="summary-panel">
+      {activeTab === 'consultation' ? (
+        <section className="workspace no-print">
+          <form className="summary-form" onSubmit={handleSubmit}>
             <div className="panel-heading">
               <div>
-                <p className="eyebrow">Output</p>
-                <h2>Patient summary</h2>
+                <p className="eyebrow">Patient Intake</p>
+                <h2>Clinical details</h2>
               </div>
-              {summary && <span className="progress-pill">#{summary.summary_id}</span>}
+              <div className="form-action-strip">
+                <button type="button" className="ghost-button" onClick={handleResetForm}>
+                  Clear Form
+                </button>
+                <div className="progress-pill">{completedFields}/5 ready</div>
+              </div>
             </div>
 
-            {error && <div className="message error">{error}</div>}
-            {notice && <div className="message success">{notice}</div>}
+            <div className="field-grid">
+              <label>
+                Patient name
+                <input
+                  required
+                  value={form.patient_name}
+                  onChange={(event) =>
+                    updateField('patient_name', event.target.value)
+                  }
+                  placeholder="Ananya Rao"
+                />
+              </label>
+              <label>
+                Age
+                <input
+                  required
+                  min="0"
+                  type="number"
+                  value={form.age}
+                  onChange={(event) => updateField('age', event.target.value)}
+                  placeholder="42"
+                />
+              </label>
+            </div>
 
-            {summary ? (
-              <>
-                <div className="summary-sections">
-                  {Object.entries(summary.sections).map(([key, value]) => (
-                    <article key={key}>
-                      <h3>{sectionLabels[key as keyof SummarySections]}</h3>
-                      <p>{value}</p>
-                    </article>
-                  ))}
-                </div>
-                <div className="feedback-row">
-                  <span>Was this useful?</span>
-                  <button type="button" onClick={() => submitFeedback(1)}>
-                    Yes
-                  </button>
-                  <button type="button" onClick={() => submitFeedback(0)}>
-                    No
-                  </button>
-                </div>
-              </>
-            ) : (
-              <div className="empty-state">
-                Enter the visit details and generate a simple summary for the
-                patient.
-              </div>
-            )}
-          </section>
+            <div className="field-grid">
+              <label>
+                Clinical Department / Speciality
+                <select
+                  value={form.speciality}
+                  onChange={(event) => updateField('speciality', event.target.value)}
+                  className="dropdown-select"
+                >
+                  <option value="General Medicine">General Medicine</option>
+                  <option value="Pediatrics">Pediatrics</option>
+                  <option value="Cardiology">Cardiology</option>
+                  <option value="Orthopedics">Orthopedics</option>
+                  <option value="Gynecology">Gynecology</option>
+                  <option value="Dermatology">Dermatology</option>
+                </select>
+              </label>
 
-          <section className="history-panel">
-            <div className="panel-heading">
-              <div>
-                <p className="eyebrow">Records</p>
-                <h2>Recent visits</h2>
+              <div className="toggle-label">
+                <span className="label-text">Preferred Summary Language</span>
+                <div className="toggle-group">
+                  <button
+                    type="button"
+                    className={`toggle-btn ${form.language === 'English' ? 'active' : ''}`}
+                    onClick={() => updateField('language', 'English')}
+                  >
+                    English
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn ${form.language === 'Telugu' ? 'active' : ''}`}
+                    onClick={() => updateField('language', 'Telugu')}
+                  >
+                    తెలుగు (Telugu)
+                  </button>
+                </div>
               </div>
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={() => void loadInitialData()}
-              >
-                Refresh
+            </div>
+
+            <div className="field-grid">
+              <div className="toggle-label-full">
+                <span className="label-text">Patient Understanding Level</span>
+                <div className="toggle-group">
+                  <button
+                    type="button"
+                    className={`toggle-btn ${form.understanding_level === 'Simple' ? 'active' : ''}`}
+                    onClick={() => updateField('understanding_level', 'Simple')}
+                  >
+                    Simple (Non-Medical)
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn ${form.understanding_level === 'Basic' ? 'active' : ''}`}
+                    onClick={() => updateField('understanding_level', 'Basic')}
+                  >
+                    Basic (Layperson)
+                  </button>
+                  <button
+                    type="button"
+                    className={`toggle-btn ${form.understanding_level === 'Detailed' ? 'active' : ''}`}
+                    onClick={() => updateField('understanding_level', 'Detailed')}
+                  >
+                    Detailed
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <label>
+              Complaint
+              <textarea
+                required
+                value={form.complaint}
+                onChange={(event) => updateField('complaint', event.target.value)}
+                placeholder="Fever and body pains for 3 days"
+              />
+            </label>
+
+            <div className="field-grid">
+              <label>
+                Diagnosis
+                <textarea
+                  required
+                  value={form.diagnosis}
+                  onChange={(event) =>
+                    updateField('diagnosis', event.target.value)
+                  }
+                  placeholder="Viral fever"
+                />
+              </label>
+              <label>
+                Treatment
+                <textarea
+                  required
+                  value={form.treatment}
+                  onChange={(event) =>
+                    updateField('treatment', event.target.value)
+                  }
+                  placeholder="Hydration, paracetamol, rest"
+                />
+              </label>
+            </div>
+
+            <label>
+              Follow-up Instructions
+              <input
+                value={form.followup}
+                onChange={(event) => updateField('followup', event.target.value)}
+                placeholder="Review after 3 days if fever continues"
+              />
+            </label>
+
+            <div className="medication-header">
+              <h3>Medications prescribed</h3>
+              <button type="button" className="ghost-button" onClick={addMedication}>
+                + Add medicine
               </button>
             </div>
 
-            {isLoadingHistory ? (
-              <div className="empty-state">Loading history...</div>
-            ) : history.length > 0 ? (
-              <div className="history-list">
-                {history.slice(0, 5).map((item) => (
-                  <article key={item.id}>
-                    <strong>{item.patient_name}</strong>
-                    <span>
-                      {item.diagnosis} · {new Date(item.created_at).toLocaleDateString()}
-                    </span>
-                    <p>{item.complaint}</p>
-                  </article>
-                ))}
+            <div className="medication-list">
+              {form.medications.map((item, index) => (
+                <div className="medication-row" key={index}>
+                  <input
+                    value={item.name}
+                    onChange={(event) =>
+                      updateMedication(index, 'name', event.target.value)
+                    }
+                    placeholder="Medicine Name"
+                  />
+                  <input
+                    value={item.dose}
+                    onChange={(event) =>
+                      updateMedication(index, 'dose', event.target.value)
+                    }
+                    placeholder="Dose (e.g. 500mg)"
+                  />
+                  <input
+                    value={item.frequency}
+                    onChange={(event) =>
+                      updateMedication(index, 'frequency', event.target.value)
+                    }
+                    placeholder="Frequency (e.g. 1-0-1)"
+                  />
+                  <input
+                    value={item.duration}
+                    onChange={(event) =>
+                      updateMedication(index, 'duration', event.target.value)
+                    }
+                    placeholder="Duration (e.g. 5 days)"
+                  />
+                  <button
+                    type="button"
+                    className="icon-button"
+                    aria-label="Remove medication"
+                    onClick={() => removeMedication(index)}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {templates.length > 0 && (
+              <div className="template-box">
+                <span className="template-label">Quick Templates:</span>
+                <div className="template-strip" aria-label="Templates">
+                  {templates.map((template) => (
+                    <button
+                      type="button"
+                      key={template.id}
+                      onClick={() => applyTemplate(template)}
+                    >
+                      {template.title}
+                    </button>
+                  ))}
+                </div>
               </div>
-            ) : (
-              <div className="empty-state">No consultations yet.</div>
             )}
-          </section>
-        </aside>
-      </section>
+
+            <button className="primary-button" disabled={isGenerating}>
+              {isGenerating ? 'Generating summary with AI...' : 'Generate patient-friendly summary'}
+            </button>
+          </form>
+
+          <aside className="side-column">
+            <section className="summary-panel">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Patient Output</p>
+                  <h2>Patient Summary Summary</h2>
+                </div>
+                {summary && <span className="progress-pill">ID #{summary.summary_id}</span>}
+              </div>
+
+              {summary && editableSections ? (
+                <div className="summary-result-container">
+                  <div className="summary-edit-instructions">
+                    💡 <em>You can review and edit each section's patient-friendly description directly below.</em>
+                  </div>
+                  
+                  <div className="summary-sections">
+                    {Object.keys(editableSections).map((key) => {
+                      const sectionKey = key as keyof SummarySections;
+                      return (
+                        <article key={sectionKey} className="editable-section-card">
+                          <label className="section-title-label">
+                            {sectionLabels[sectionKey]}
+                            <textarea
+                              className="section-edit-textarea"
+                              value={editableSections[sectionKey]}
+                              onChange={(e) => {
+                                const newVal = e.target.value;
+                                setEditableSections(prev => prev ? ({ ...prev, [sectionKey]: newVal }) : null);
+                              }}
+                            />
+                          </label>
+                        </article>
+                      );
+                    })}
+                  </div>
+
+                  <div className="doctors-note-section">
+                    <label className="section-title-label">
+                      📋 Additional Doctor's Notes (వ్యక్తిగత సూచనలు)
+                      <textarea
+                        className="doctors-note-textarea"
+                        placeholder="Add specific diet advice, warning signs, or doctor's note..."
+                        value={doctorsNote}
+                        onChange={(e) => setDoctorsNote(e.target.value)}
+                      />
+                    </label>
+                  </div>
+
+                  <div className="action-row flex-buttons">
+                    <button type="button" className="secondary-button" onClick={handleSaveChanges} disabled={isGenerating}>
+                      {isGenerating ? 'Saving...' : '💾 Save Changes'}
+                    </button>
+                    <button type="button" className="print-btn-action" onClick={handlePrint}>
+                      🖨️ Print Summary
+                    </button>
+                    <button type="button" className="whatsapp-btn-action" onClick={handleWhatsAppShare}>
+                      💬 WhatsApp Share
+                    </button>
+                  </div>
+
+                  <div className="feedback-row-stars">
+                    <span>Rate summary quality:</span>
+                    {renderStars(feedbackRating || 0, true, (rating) => submitFeedback(rating))}
+                  </div>
+                </div>
+              ) : (
+                <div className="empty-state">
+                  <div className="empty-icon">📝</div>
+                  Fill in patient clinical notes and generate a simple, clear post-consultation summary in English or Telugu.
+                </div>
+              )}
+            </section>
+
+            <section className="history-panel">
+              <div className="panel-heading">
+                <div>
+                  <p className="eyebrow">Consultation Registry</p>
+                  <h2>Recent patients</h2>
+                </div>
+                <button
+                  type="button"
+                  className="ghost-button"
+                  onClick={() => void loadInitialData()}
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+
+              {isLoadingHistory ? (
+                <div className="empty-state">Loading records...</div>
+              ) : history.length > 0 ? (
+                <div className="history-list">
+                  {history.map((item) => (
+                    <article key={item.id} className="history-card-item" onClick={() => loadConsultationDetail(item.id)}>
+                      <div className="history-header">
+                        <strong>{item.patient_name}</strong>
+                        <span className="history-date">
+                          {new Date(item.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <div className="history-meta">
+                        <span>{item.age} yrs · {item.speciality || 'General Medicine'}</span>
+                        <span className="lang-tag">{item.language || 'English'}</span>
+                      </div>
+                      <div className="history-diagnoses">
+                        <strong>Diag:</strong> {item.diagnosis}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">No consultation history found.</div>
+              )}
+            </section>
+          </aside>
+        </section>
+      ) : (
+        /* Admin Analytics Dashboard */
+        <section className="analytics-dashboard no-print">
+          <div className="dashboard-header-row">
+            <div>
+              <p className="eyebrow">Overview</p>
+              <h2>Clinic Analytics Dashboard</h2>
+            </div>
+            <button type="button" className="secondary-button" onClick={loadAnalytics} disabled={isLoadingAnalytics}>
+              {isLoadingAnalytics ? 'Refreshing...' : '🔄 Refresh Data'}
+            </button>
+          </div>
+
+          {isLoadingAnalytics || !analyticsData ? (
+            <div className="empty-state">Loading dashboard analytics data...</div>
+          ) : (
+            <div className="dashboard-content">
+              {/* Metrics Row */}
+              <div className="metrics-grid">
+                <div className="metric-card">
+                  <span className="metric-title">Total Summaries Generated</span>
+                  <span className="metric-val">{analyticsData.total_generations}</span>
+                  <span className="metric-desc">Consultation records converted to patient summaries</span>
+                </div>
+                
+                <div className="metric-card">
+                  <span className="metric-title">Average Patient Rating</span>
+                  <div className="metric-rating-row">
+                    <span className="metric-val">{analyticsData.average_rating}</span>
+                    <span className="rating-max">/ 5</span>
+                  </div>
+                  <div className="metric-stars-wrap">
+                    {renderStars(Math.round(analyticsData.average_rating))}
+                  </div>
+                  <span className="metric-desc">Based on direct post-consultation star ratings</span>
+                </div>
+              </div>
+
+              {/* Speciality Breakdown & Trend Grid */}
+              <div className="dashboard-charts-grid">
+                {/* Speciality Distributions */}
+                <div className="chart-card">
+                  <h3>Summaries by Medical Speciality</h3>
+                  <p className="chart-subtitle">Distribution of summaries generated across clinical departments</p>
+                  
+                  <div className="speciality-distribution-list">
+                    {analyticsData.speciality_distribution && analyticsData.speciality_distribution.length > 0 ? (
+                      analyticsData.speciality_distribution.map((item: any, idx: number) => {
+                        const total = analyticsData.total_generations || 1;
+                        const pct = Math.round((item.count / total) * 100);
+                        return (
+                          <div className="distribution-row" key={idx}>
+                            <div className="dist-label-row">
+                              <span className="dist-name">{item.speciality}</span>
+                              <span className="dist-count">{item.count} ({pct}%)</span>
+                            </div>
+                            <div className="bar-track">
+                              <div className="bar-fill" style={{ width: `${pct}%` }}></div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    ) : (
+                      <div className="empty-chart-state">No speciality statistics recorded yet.</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ratings Daily Trend */}
+                <div className="chart-card">
+                  <h3>Daily Patient Feedback Log</h3>
+                  <p className="chart-subtitle">Log of average ratings received per day</p>
+
+                  <div className="table-responsive">
+                    <table className="ratings-trend-table">
+                      <thead>
+                        <tr>
+                          <th>Date</th>
+                          <th>Ratings Count</th>
+                          <th>Average Rating</th>
+                          <th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analyticsData.ratings_per_day && analyticsData.ratings_per_day.length > 0 ? (
+                          analyticsData.ratings_per_day.map((item: any, idx: number) => (
+                            <tr key={idx}>
+                              <td>{new Date(item.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</td>
+                              <td>{item.count} feedbacks</td>
+                              <td>
+                                <div className="table-rating">
+                                  <span>{item.average_rating}</span>
+                                  {renderStars(Math.round(item.average_rating))}
+                                </div>
+                              </td>
+                              <td>
+                                <span className={`status-badge ${item.average_rating >= 4 ? 'high' : item.average_rating >= 3 ? 'mid' : 'low'}`}>
+                                  {item.average_rating >= 4.5 ? 'Excellent' : item.average_rating >= 4 ? 'Very Good' : item.average_rating >= 3 ? 'Satisfactory' : 'Needs Attention'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        ) : (
+                          <tr>
+                            <td colSpan={4} className="empty-table-cell">No feedback logged yet.</td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Hidden Print-Only Layout */}
+      {summary && editableSections && (
+        <div id="patient-print-summary" className="print-only">
+          <div className="print-letterhead">
+            <div className="letterhead-logo">
+              <span className="cross-icon">✚</span> AYURDHA CLINICS
+            </div>
+            <div className="letterhead-details">
+              <p className="bold">Ayurvedha & Modern Integrative Healthcare Centre</p>
+              <p>Plot 48, Jubilee Hills Road, Hyderabad, Telangana - 500033</p>
+              <p>Email: consult@ayurdhaclinics.com | Phone: +91 40 4455 6677</p>
+            </div>
+          </div>
+
+          <div className="print-title-box">
+            <h2>POST-CONSULTATION VISIT SUMMARY</h2>
+            <p className="print-date">Date: {new Date().toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+          </div>
+
+          <div className="print-patient-info">
+            <div className="info-col">
+              <p><strong>Patient Name:</strong> {form.patient_name}</p>
+              <p><strong>Age / Gender:</strong> {form.age} Years</p>
+            </div>
+            <div className="info-col">
+              <p><strong>Clinical Department:</strong> {form.speciality}</p>
+              <p><strong>Summary Language:</strong> {form.language} ({form.understanding_level} Level)</p>
+            </div>
+          </div>
+
+          <div className="print-clinical-inputs">
+            <h3>Clinical Consultation Notes (Reference)</h3>
+            <div className="clinical-grid">
+              <div><strong>Presenting Complaint:</strong> {form.complaint}</div>
+              <div><strong>Diagnosis:</strong> {form.diagnosis}</div>
+              <div><strong>In-Clinic Treatment:</strong> {form.treatment}</div>
+            </div>
+          </div>
+
+          <div className="print-body-content">
+            <div className="print-section">
+              <h4>1. What you came in for (మీరు వచ్చిన కారణం)</h4>
+              <p>{editableSections.section1}</p>
+            </div>
+
+            <div className="print-section">
+              <h4>2. What was found (వైద్యుల పరిశీలన)</h4>
+              <p>{editableSections.section2}</p>
+            </div>
+
+            <div className="print-section">
+              <h4>3. What to take / do (మందులు మరియు గృహ చికిత్స)</h4>
+              <p>{editableSections.section3}</p>
+              
+              {/* Prescribed Medications Table */}
+              {form.medications.some(m => m.name) && (
+                <table className="print-meds-table">
+                  <thead>
+                    <tr>
+                      <th>Medicine Name</th>
+                      <th>Dose (మోతాదు)</th>
+                      <th>Frequency (ఎప్పుడు వేసుకోవాలి)</th>
+                      <th>Duration (ఎన్ని రోజులు)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {form.medications.filter(m => m.name).map((m, idx) => (
+                      <tr key={idx}>
+                        <td className="bold">{m.name}</td>
+                        <td>{m.dose || '-'}</td>
+                        <td>{m.frequency || '-'}</td>
+                        <td>{m.duration || '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="print-section">
+              <h4>4. When to return (తదుపరి సంప్రదింపులు)</h4>
+              <p>{editableSections.section4}</p>
+            </div>
+
+            {doctorsNote && (
+              <div className="print-section doctors-note-box">
+                <h4>📋 Additional Doctor's Advice (వైద్యుల ప్రత్యేక సూచనలు)</h4>
+                <p>{doctorsNote}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="print-footer-banner">
+            <div className="footer-notes">
+              <p>• Please take medications strictly as prescribed. Do not skip doses.</p>
+              <p>• In case of emergency or severe discomfort, please visit the clinic or call us immediately.</p>
+            </div>
+            <div className="signature-area">
+              <div className="sig-space"></div>
+              <p className="sig-label">Consulting Practitioner Signature</p>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   )
 }
