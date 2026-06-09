@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import type { FormState, GenerateResponse, SummarySections, HistoryItem, Template, Medication } from '../types'
+import type { FormState, GenerateResponse, SummarySections, Template, Medication } from '../types'
 import { apiRequest } from '../api'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
@@ -44,17 +44,14 @@ export default function ConsultationWorkspace() {
   const [savedDoctorsNote, setSavedDoctorsNote] = useState<string>('')
   const [editableSections, setEditableSections] = useState<SummarySections | null>(null)
   const [doctorsNote, setDoctorsNote] = useState<string>('')
-  const [history, setHistory] = useState<HistoryItem[]>([])
   const [templates, setTemplates] = useState<Template[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [isLoadingHistory, setIsLoadingHistory] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
   const [feedbackRating, setFeedbackRating] = useState<number | null>(null)
   const [hoverRating, setHoverRating] = useState<number | null>(null)
   const [isSharingPdf, setIsSharingPdf] = useState(false)
-  const [deletingId, setDeletingId] = useState<number | null>(null)
 
   const hasUnsavedChanges = useMemo(() => {
     if (!summary || !editableSections || !savedSections) return false
@@ -80,17 +77,12 @@ export default function ConsultationWorkspace() {
   }, [urlId])
 
   async function loadInitialData() {
-    setIsLoadingHistory(true)
     try {
-      const [historyData, templateData] = await Promise.all([
-        apiRequest<HistoryItem[]>('/api/history'),
-        apiRequest<Template[]>('/api/templates'),
-      ])
-      setHistory(historyData)
+      const templateData = await apiRequest<Template[]>('/api/templates')
       setTemplates(templateData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load API data')
-    } finally { setIsLoadingHistory(false) }
+    }
   }
 
   function updateField(field: keyof FormState, value: string) {
@@ -134,18 +126,6 @@ export default function ConsultationWorkspace() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not load history details')
     } finally { setIsGenerating(false) }
-  }
-
-  async function handleDeleteConsultation(id: number) {
-    if (!window.confirm(`Delete consultation #${id}? This cannot be undone.`)) return
-    setDeletingId(id)
-    try {
-      await apiRequest(`/api/history/${id}`, { method: 'DELETE' })
-      setNotice(`Consultation #${id} deleted successfully`)
-      await loadInitialData()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not delete consultation')
-    } finally { setDeletingId(null) }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -201,8 +181,6 @@ export default function ConsultationWorkspace() {
       setSavedDoctorsNote(response.doctors_note || '')
       setFeedbackRating(response.rating || null)
       setNotice('Consultation changes saved successfully')
-      const historyData = await apiRequest<HistoryItem[]>('/api/history')
-      setHistory(historyData)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save modifications')
     } finally { setIsSaving(false) }
