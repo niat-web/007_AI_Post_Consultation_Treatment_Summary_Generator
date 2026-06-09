@@ -1,91 +1,184 @@
+from openai import OpenAI
 import os
-import json
-import google.generativeai as genai
+
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=OPENROUTER_API_KEY,
+)
+
+SYSTEM_PROMPT = """
+You are an empathetic medical assistant working for Ayurdha Clinics.
+
+Rules:
+- Write only in the requested language.
+- Use simple patient-friendly language.
+- Avoid medical jargon.
+- Medication names can remain unchanged.
+- Do not use markdown.
+- Return only the requested content.
+"""
+
+
+def generate_section(prompt, fallback_text=""):
+    try:
+        response = client.chat.completions.create(
+            model="openai/gpt-oss-20b:free",
+            messages=[
+                {
+                    "role": "system",
+                    "content": SYSTEM_PROMPT
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
+            temperature=0.2,
+            max_tokens=500
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        print(f"Section generation failed: {e}")
+        return fallback_text
 
 
 def generate_patient_summary(data):
-    api_key = os.getenv("GEMINI_API_KEY")
-    language = data.get("language", "English")
-    understanding_level = data.get("understanding_level", "Simple")
-    
-    patient_name = data.get("patient_name", "Patient")
-    complaint = data.get("complaint", "")
-    diagnosis = data.get("diagnosis", "")
-    treatment = data.get("treatment", "")
-    followup = data.get("followup", "Follow standard clinical advice.")
-    
-    medications = data.get("medications", [])
-    meds_list = []
-    for m in medications:
-        meds_list.append(f"{m.get('name')} ({m.get('dose')}, {m.get('frequency')}, for {m.get('duration')})")
-    meds_str = ", ".join(meds_list) if meds_list else "None prescribed"
-    
-    prompt = f"""
-You are an empathetic, patient-friendly AI medical assistant at Ayurdha Clinics.
-Convert the following clinical notes into a clear, patient-friendly visit summary in {language} language.
-The summary must be tailored to a "{understanding_level}" understanding level (avoid complex medical jargon, explain things in simple terms).
+    try:
+
+        language = data.get("language", "English")
+
+        if language.lower() != "telugu":
+            language = "English"
+        else:
+            language = "Telugu"
+
+        patient_name = data.get("patient_name", "Patient")
+        age = data.get("age", "")
+        complaint = data.get("complaint", "")
+        diagnosis = data.get("diagnosis", "")
+        treatment = data.get("treatment", "")
+        followup = data.get("followup", "")
+        understanding_level = data.get("understanding_level", "Simple")
+
+        medications = data.get("medications", [])
+
+        meds_list = []
+
+        for m in medications:
+            meds_list.append(
+                f"{m.get('name')} ({m.get('dose')}, {m.get('frequency')}, {m.get('duration')})"
+            )
+
+        meds_str = ", ".join(meds_list) if meds_list else "None prescribed"
+
+        section1 = generate_section(
+            f"""
+Language: {language}
+Understanding Level: {understanding_level}
 
 Patient Name: {patient_name}
-Age: {data.get("age")}
+Age: {age}
 Presenting Complaint: {complaint}
+
+Write a patient-friendly explanation of why the patient visited the clinic.
+
+Return only the content.
+""",
+            fallback_text=f"The patient visited the clinic with complaints of {complaint}."
+        )
+
+        section2 = generate_section(
+            f"""
+Language: {language}
+Understanding Level: {understanding_level}
+
+Diagnosis:
+{diagnosis}
+
+Explain the diagnosis in simple language.
+
+Return only the content.
+""",
+            fallback_text=f"The diagnosis recorded was {diagnosis}."
+        )
+
+        section3 = generate_section(
+            f"""
+Language: {language}
+Understanding Level: {understanding_level}
+
+Treatment:
+{treatment}
+
+Medications:
+{meds_str}
+
+Explain treatment and medication usage.
+
+Return only the content.
+""",
+            fallback_text=f"Treatment provided: {treatment}. Medications: {meds_str}."
+        )
+
+        section4 = generate_section(
+            f"""
+Language: {language}
+Understanding Level: {understanding_level}
+
+Follow-up Instructions:
+{followup}
+
+Explain next steps and precautions.
+
+Return only the content.
+""",
+            fallback_text=f"Follow-up instructions: {followup}."
+        )
+
+        full_summary = generate_section(
+            f"""
+Language: {language}
+Understanding Level: {understanding_level}
+
+Patient Name: {patient_name}
+Age: {age}
+Complaint: {complaint}
 Diagnosis: {diagnosis}
-Treatment Provided: {treatment}
+Treatment: {treatment}
 Medications: {meds_str}
-Follow-up Instructions: {followup}
+Follow-up: {followup}
 
-You MUST return the output as a valid JSON object with the following keys. Do NOT wrap the JSON in ```json markdown blocks, just return the raw JSON:
-{{
-  "section1": "What you came in for (Explain the patient's presenting complaint and reason for visit in simple terms)",
-  "section2": "What was found (Explain the diagnosis and what it means in plain language, avoiding jargon)",
-  "section3": "What was done / what you need to take (Explain the treatment provided and how to take each medication in clear steps)",
-  "section4": "What to do next (Explain follow-up instructions, warning signs, and when to return)",
-  "full_summary": "A cohesive, single-paragraph summary of the entire visit."
-}}
-"""
+Create a concise patient-friendly summary.
 
-    if api_key:
-        try:
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel("gemini-1.5-pro", generation_config={"response_mime_type": "application/json"})
-            response = model.generate_content(prompt)
-            result = json.loads(response.text.strip())
-            return {
-                "prompt": prompt,
-                "section1": result.get("section1", ""),
-                "section2": result.get("section2", ""),
-                "section3": result.get("section3", ""),
-                "section4": result.get("section4", ""),
-                "full_summary": result.get("full_summary", "")
-            }
-        except Exception as e:
-            print("Gemini API Error, falling back to local engine:", e)
-            # Fallback to local engine
-    
-    # Local engine (fallback mockup)
-    is_telugu = language.lower() == "telugu"
-    
-    if is_telugu:
-        s1 = f"మీరు ఈ రోజు ఈ క్రింది సమస్యలతో మా క్లినిక్‌ని సందర్శించారు: {complaint}."
-        s2 = f"మా పరీక్షల ఆధారంగా నిర్ధారణ అయిన వ్యాధి: {diagnosis}."
-        s3 = f"చేయబడిన చికిత్స: {treatment}."
-        if meds_list:
-            s3 += f" దయచేసి ఈ క్రింది మందులను తీసుకోండి: {meds_str}."
-        s4 = f"తదుపరి సూచనలు: {followup}."
-        full = f"{patient_name} గారు, మీ ఆరోగ్య పరిస్థితిని బట్టి {diagnosis} ఉన్నట్లు నిర్ధారణ అయింది. చికిత్స కోసం {treatment} సూచించబడింది మరియు మందులు ({meds_str}) ఇవ్వబడ్డాయి. దయచేసి ఈ క్రింది జాగ్రత్తలు తీసుకోండి: {followup}."
-    else:
-        s1 = f"You visited our clinic today with complaints of: {complaint}."
-        s2 = f"Based on our evaluation, the diagnosis is: {diagnosis}."
-        s3 = f"Treatment provided: {treatment}."
-        if meds_list:
-            s3 += f" Please take the following prescribed medications: {meds_str}."
-        s4 = f"Follow-up instructions: {followup}."
-        full = f"Dear {patient_name}, you visited us for {complaint}. We diagnosed it as {diagnosis}. The recommended treatment is {treatment}. Medications: {meds_str}. Please follow up as instructed: {followup}."
-        
-    return {
-        "prompt": prompt,
-        "section1": s1,
-        "section2": s2,
-        "section3": s3,
-        "section4": s4,
-        "full_summary": full
-    }
+Return only the content.
+""",
+            fallback_text=(
+                f"{patient_name} visited for {complaint}. "
+                f"Diagnosis: {diagnosis}. "
+                f"Treatment: {treatment}. "
+                f"Follow-up: {followup}."
+            )
+        )
+
+        return {
+            "section1": section1,
+            "section2": section2,
+            "section3": section3,
+            "section4": section4,
+            "full_summary": full_summary
+        }
+
+    except Exception as e:
+        print(f"Summary generation failed: {e}")
+
+        return {
+            "section1": "Unable to generate summary.",
+            "section2": "Unable to generate summary.",
+            "section3": "Unable to generate summary.",
+            "section4": "Unable to generate summary.",
+            "full_summary": "Unable to generate summary at this time."
+        }

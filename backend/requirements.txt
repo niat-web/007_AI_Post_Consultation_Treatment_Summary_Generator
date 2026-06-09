@@ -3,4 +3,4 @@ flask-sqlalchemy
 psycopg2-binary
 python-dotenv
 flask-cors
-google-generativeai
+openai
